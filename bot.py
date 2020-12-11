@@ -175,7 +175,8 @@ def verify_signature(payload, github_signature):
 
 
 @app.route("/github", methods=["POST"])
-async def hello():
+async def github_event():
+    print("github_event")
     payload = await quart.request.get_data()
     if not verify_signature(payload, quart.request.headers["X-Hub-Signature-256"].replace("sha256=", "")):
         quart.abort(403)
@@ -202,6 +203,11 @@ async def hello():
     if discord_msg is not None:
         await channel.send(discord_msg)
     return ""
+
+
+@app.route("/")
+async def index():
+    return "Hello!"
 
 
 @bot.command(name="ping")

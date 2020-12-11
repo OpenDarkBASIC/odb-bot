@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenDarkBASIC Discord Bot
+
+[Service]
+Type=simple
+Restart=on-failure
+ExecStart=/home/odb-bot/odb-bot/venv/bin/python /home/odb-bot/odb-bot/bot.py
+WorkingDirectory=/home/odb-bot/odb-bot
+User=odb-bot
+
+[Install]
+WantedBy=multi-user.target
+
