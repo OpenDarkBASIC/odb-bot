@@ -6,6 +6,7 @@ import hashlib
 import traceback
 import asyncio
 import quart
+import aiohttp
 from discord.ext import commands
 
 
@@ -13,12 +14,17 @@ if not os.path.exists("config.json"):
     open("config.json", "wb").write(json.dumps({
         "discord": {
             "prefix": ".",
-            "token": "",
-            "channel_id": 0
+            "token": ""
         },
         "github": {
             "secret": "",
-            "port": 8013
+            "host": "0.0.0.0",
+            "port": 8013,
+            "channel_id": 0
+        },
+        "dpbc": {
+            "endpoint": "http://foo.bla/v1",
+            "secret": ""
         }
     }, indent=2).encode("utf-8"))
     print("Created file config.json. Please edit it with the correct token now, then run the bot again")
@@ -33,6 +39,7 @@ app = quart.Quart(__name__)
 def ping(data):
     return "(github ping)"
 
+
 def create(data):
     ref_type = data["ref_type"]
     ref = data["ref"]
@@ -41,6 +48,7 @@ def create(data):
 
     return f"{user} created {ref_type} `{ref}` for repo {repo}"
 
+
 def delete(data):
     ref_type = data["ref_type"]
     ref = data["ref"]
@@ -48,6 +56,7 @@ def delete(data):
     repo = data["repository"]["name"]
 
     return f"{user} deleted {ref_type} `{ref}` for repo {repo}"
+
 
 def issues(data):
     action = data["action"]
@@ -64,6 +73,7 @@ def issues(data):
     elif action == "deleted":
         return f"{user} deleted issue #{number} ```{title}```"
 
+
 def issue_comment(data):
     action = data["action"]
     user = data["comment"]["user"]["login"]
@@ -72,6 +82,7 @@ def issue_comment(data):
     title = data["issue"]["title"]
 
     return f"{user} {action} comment on issue #{number} (<{url}>) ```{title}```"
+
 
 def push(data):
     commit_msgs = [x["message"] for x in data["commits"]]
@@ -83,6 +94,7 @@ def push(data):
             return f"{data['pusher']['name']} pushed to branch `{data['ref']}` ```\n{commit_msgs}```"
     return f"{data['pusher']['name']} pushed to branch `{data['ref']}` ```\n * {data['head_commit']['message']}```"
 
+
 def fork(data):
     user = data["sender"]["login"]
     repo = data["repository"]["name"]
@@ -90,8 +102,10 @@ def fork(data):
 
     return f"{user} forked repo {repo} (<{url}>)"
 
+
 def commit_comment(data):
     return None
+
 
 def pull_request(data):
     action = data["action"]
@@ -123,11 +137,14 @@ def pull_request(data):
 
     return f"{user} {map_action['action']} PR #{number} (<{url}>) ```{title}```"
 
+
 def pull_request_review(data):
     return None
 
+
 def pull_request_review_comment(data):
     return None
+
 
 def star(data):
     action = data["action"]
@@ -139,6 +156,7 @@ def star(data):
         return f"{user} starred repo {repo} ({star_count} stars total)"
     if action == "deleted":
         return f"{user} unstarred repo {repo} ({star_count} stars total)"
+
 
 def watch(data):
     repo = data["repository"]["name"]
@@ -205,7 +223,6 @@ github_handlers = {
     "push": push,
     "fork": fork,
     "commit_comment": commit_comment,
-    "issue_comment": issue_comment,
     "pull_request": pull_request,
     "pull_request_review": pull_request_review,
     "pull_request_review_comment": pull_request_review_comment,
@@ -218,22 +235,51 @@ github_handlers = {
 }
 
 
-def verify_signature(payload, github_signature):
+def verify_signature(payload, signature, secret):
     payload_signature = hmac.new(
-            key=config["github"]["secret"].encode("utf-8"),
+            key=secret.encode("utf-8"),
             msg=payload,
             digestmod=hashlib.sha256).hexdigest()
-    return hmac.compare_digest(payload_signature, github_signature)
+    return hmac.compare_digest(payload_signature, signature)
+
+
+def create_signature(payload, secret):
+    payload_signature = hmac.new(
+        key=secret.encode("utf-8"),
+        msg=payload,
+        digestmod=hashlib.sha256).hexdigest()
+    return payload_signature
+
+
+def get_dbpc_source(msg):
+    start = msg.find("```") + 3
+    end = msg.rfind("```")
+    if start > -1 and end > -1:
+        msg = msg[start:end]
+        if msg.startswith("basic"):
+            msg = msg[6:]
+        return msg
+
+    start = msg.find("``") + 2
+    end = msg.rfind("``")
+    if start > -1 and end > -1:
+        return msg[start:end]
+
+    start = msg.find("`") + 1
+    end = msg.rfind("`")
+    if start > -1 and end > -1:
+        return msg[start:end]
+
+    return None
 
 
 @app.route("/github", methods=["POST"])
 async def github_event():
-    print("github_event")
     payload = await quart.request.get_data()
-    if not verify_signature(payload, quart.request.headers["X-Hub-Signature-256"].replace("sha256=", "")):
+    if not verify_signature(payload, quart.request.headers["X-Hub-Signature-256"].replace("sha256=", ""), config["github"]["secret"]):
         quart.abort(403)
 
-    channel = bot.get_channel(config["discord"]["channel_id"])
+    channel = bot.get_channel(config["github"]["channel_id"])
     if channel is None:
         return ""
 
@@ -242,8 +288,7 @@ async def github_event():
         handler = github_handlers[event_type]
     except KeyError:
         # No handler for this event exists, so response with a generic one
-        print(f"No handler found")
-        await channel.send("Unhandled github event: `{}`".format(event_type))
+        await channel.send(f"Unhandled github event: `{event_type}`")
         return ""
 
     try:
@@ -274,6 +319,33 @@ async def echo(ctx):
     except:
         return await ctx.send("Expected 1 argument")
     await ctx.send(msg)
+
+
+@bot.command(name="dbpc")
+async def dpbc(ctx):
+    src = get_dbpc_source(ctx.message.content)
+    if src is None:
+        return await ctx.send("No source code found. Make sure to put it into \\`\\`\\`code here\\`\\`\\`")
+
+    payload = json.dumps({
+        "code": src
+    }).encode("utf-8")
+    payload_signature = create_signature(payload, config["dbpc"]["secret"])
+    headers = {"X-Signature-256": f"sha256={payload_signature}"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                    url=config["dbpc"]["endpoint"] + "/compile",
+                    data=payload,
+                    headers=headers) as resp:
+                if resp.status != 200:
+                    return await ctx.send(f"Endpoint returned {resp.status}")
+                resp = await resp.read()
+
+        resp = json.loads(resp.decode("utf-8"))
+        await ctx.send(f"```{resp['output']}```")
+    except:
+        await ctx.send(f"Failed connect to endpoint")
 
 
 loop = asyncio.get_event_loop()
