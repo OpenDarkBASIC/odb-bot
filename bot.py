@@ -148,6 +148,54 @@ def watch(data):
     return f"{user} watched repo {repo} ({watch_count} watches total)"
 
 
+def check_run(data):
+    if not data["check_run"]["status"] == "completed":
+        return None
+
+    conclusion = data["check_run"]["conclusion"]
+    if conclusion in ("failure", "timed_out", "action_required"):
+        name = data["check_run"]["name"]
+        repo = data["repository"]["name"]
+        url = data["check_run"]["html_url"]
+        map_conclusion = {
+            "failure": "failed",
+            "timed_out": "timed out",
+            "action_required": "requires action"
+        }
+        return f"Check run {map_conclusion[conclusion]} for repo {repo} (<{url}>)"
+
+
+def check_suite(data):
+    if data["check_suite"]["status"] == "requested":
+        branch = data["check_suite"]["head_branch"]
+        user = data["sender"]["login"]
+        repo = data["repository"]["name"]
+        return f"{user} requested check suite for branch {branch} in repo {repo}"
+
+    if data["check_suite"]["status"] == "completed":
+        conclusion = data["check_suite"]["conclusion"]
+        if conclusion in ("failure", "timed_out", "action_required"):
+            repo = data["repository"]["name"]
+            branch = data["check_suite"]["head_branch"]
+            url = data["check_suite"]["url"]
+            map_conclusion = {
+                "failure": "failed",
+                "timed_out": "timed out",
+                "action_required": "requires action"
+            }
+            return f"Check suite for branch {branch} {map_conclusion[conclusion]} for repo {repo} (<{url}>)"
+
+    return None
+
+
+def label(data):
+    return None
+
+
+def milestone(data):
+    return None
+
+
 github_handlers = {
     "ping": ping,
     "create": create,
@@ -162,7 +210,11 @@ github_handlers = {
     "pull_request_review": pull_request_review,
     "pull_request_review_comment": pull_request_review_comment,
     "star": star,
-    "watch": watch
+    "watch": watch,
+    "check_run": check_run,
+    "check_suite": check_suite,
+    "label": label,
+    "milestone": milestone
 }
 
 
@@ -227,7 +279,7 @@ async def echo(ctx):
 loop = asyncio.get_event_loop()
 try:
     loop.create_task(bot.start(config["discord"]["token"]))
-    app.run(loop=loop, port=config["github"]["port"])
+    app.run(loop=loop, host=config["github"]["host"], port=config["github"]["port"])
 except KeyboardInterrupt:
     loop.run_until_complete(bot.logout())
 except:
