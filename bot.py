@@ -343,9 +343,9 @@ async def dpbc(ctx):
                 resp = await resp.read()
 
         resp = json.loads(resp.decode("utf-8"))
-        await ctx.send(f"```{resp['output']}```")
+        await ctx.send(f"```\n{resp['output']}```")
     except:
-        await ctx.send(f"Failed connect to endpoint")
+        await ctx.send(f"Failed to connect to endpoint")
 
 
 loop = asyncio.get_event_loop()
