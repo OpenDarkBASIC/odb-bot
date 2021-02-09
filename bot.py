@@ -22,7 +22,7 @@ if not os.path.exists("config.json"):
             "port": 8013,
             "channel_id": 0
         },
-        "dpbc": {
+        "dbpc": {
             "endpoints": {
                 "compile": "http://foo.bla/compile"
             }
@@ -304,11 +304,12 @@ async def github_event():
 
 
 @bot.command(name="dbpc")
-async def dpbc(ctx):
+async def dbpc(ctx):
     src = get_dbpc_source(ctx.message.content)
     if src is None:
         return await ctx.send("No source code found. Make sure to put it into \\`\\`\\`code here\\`\\`\\`")
 
+    print(config["dbpc"]["endpoints"]["compile"])
     payload = json.dumps({
         "code": src
     }).encode("utf-8")
@@ -318,7 +319,6 @@ async def dpbc(ctx):
                 if resp.status != 200:
                     return await ctx.send(f"Endpoint returned {resp.status}")
                 resp = await resp.read()
-
         resp = json.loads(resp.decode("utf-8"))
         await ctx.send(f"```\n{resp['output']}```")
     except:
