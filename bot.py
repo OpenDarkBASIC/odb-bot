@@ -23,8 +23,9 @@ if not os.path.exists("config.json"):
             "channel_id": 0
         },
         "dpbc": {
-            "endpoint": "http://foo.bla/v1",
-            "secret": ""
+            "endpoints": {
+                "compile": "http://foo.bla/compile"
+            }
         }
     }, indent=2).encode("utf-8"))
     print("Created file config.json. Please edit it with the correct token now, then run the bot again")
@@ -302,25 +303,6 @@ async def github_event():
     return ""
 
 
-@app.route("/")
-async def index():
-    return "Hello!"
-
-
-@bot.command(name="ping")
-async def ping(ctx):
-    await ctx.send("pong")
-
-
-@bot.command(name="echo")
-async def echo(ctx):
-    try:
-        msg = ctx.message.content.split(" ", 1)[1]
-    except:
-        return await ctx.send("Expected 1 argument")
-    await ctx.send(msg)
-
-
 @bot.command(name="dbpc")
 async def dpbc(ctx):
     src = get_dbpc_source(ctx.message.content)
@@ -330,14 +312,9 @@ async def dpbc(ctx):
     payload = json.dumps({
         "code": src
     }).encode("utf-8")
-    payload_signature = create_signature(payload, config["dbpc"]["secret"])
-    headers = {"X-Signature-256": f"sha256={payload_signature}"}
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                    url=config["dbpc"]["endpoint"] + "/compile",
-                    data=payload,
-                    headers=headers) as resp:
+            async with session.post(url=config["dbpc"]["endpoints"]["compile"], data=payload) as resp:
                 if resp.status != 200:
                     return await ctx.send(f"Endpoint returned {resp.status}")
                 resp = await resp.read()
