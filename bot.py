@@ -347,25 +347,38 @@ async def dbpc(ctx):
 
 @bot.command(name="odbci")
 async def odbci(ctx):
+    help_str = """```
+odbci pull - Pull from sources repo
+odbci run - Run all tests
+odbci status - Print summary of last test run```"""
     args = ctx.message.content.split(" ")
     if len(args) == 1:
-        return await ctx.send("```\nodbci update - Pull from sources repo\nodbci run - Run all tests\nodbci status - Print summary of last test run```")
+        return await ctx.send(help_str)
 
     async with aiohttp.ClientSession() as session:
-        if args[1] == "update":
-            async with session.get(url=config["odbci"]["endpoints"]["update"]) as resp:
-                if resp.status != 200:
-                    return await ctx.send(f"update endpoint returned status {resp.status}")
+        if args[1] == "pull":
+            try:
+                async with session.get(url=config["odbci"]["endpoints"]["pull_sources"]) as resp:
+                    if resp.status != 200:
+                        return await ctx.send(f"update endpoint returned status {resp.status}")
+            except:
+                return await ctx.send("Failed to connect to endpoint")
         elif args[1] == "run":
-            async with session.get(url=config["odbci"]["endpoints"]["run_all"]) as resp:
-                if resp.status != 200:
-                    return await ctx.send(f"update endpoint returned status {resp.status}")
+            try:
+                async with session.get(url=config["odbci"]["endpoints"]["run_all"]) as resp:
+                    if resp.status != 200:
+                        return await ctx.send(f"update endpoint returned status {resp.status}")
+            except:
+                return await ctx.send("Failed to connect to endpoint")
         elif args[1] == "status":
-            async with session.get(url=config["odbci"]["endpoints"]["status"]) as resp:
-                if resp.status != 200:
-                    return await ctx.send(f"update endpoint returned status {resp.status}")
+            try:
+                async with session.get(url=config["odbci"]["endpoints"]["status"]) as resp:
+                    if resp.status != 200:
+                        return await ctx.send(f"update endpoint returned status {resp.status}")
+            except:
+                return await ctx.send("Failed to connect to endpoint")
         else:
-            return await ctx.send("```\nodbci update - Pull from sources repo\nodbci run - Run all tests\nodbci status - Print summary of last test run```")
+            return await ctx.send(help_str)
 
 
 loop = asyncio.get_event_loop()
