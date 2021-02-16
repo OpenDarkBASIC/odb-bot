@@ -14,26 +14,28 @@ if not os.path.exists("config.json"):
     open("config.json", "wb").write(json.dumps({
         "discord": {
             "prefix": ".",
-            "token": ""
+            "token": "",
+            "github_channel_id": 0,
+            "odbci_channel_id": 0
         },
         "github": {
             "secret": "",
             "host": "0.0.0.0",
-            "port": 8013,
-            "channel_id": 0
+            "port": 8013
         },
         "dbpc": {
             "endpoints": {
-                "compile": "http://foo.bla/compile"
+                "compile": "http://127.0.0.1:/compile"
             }
         },
         "odbci": {
             "endpoints": {
-                "update": "/update_sources",
-                "run_all": "/run_all",
-                "status": "/status"
-            },
-            "channel_id": 0
+                "pull": "http://127.0.0.1:8016/pull_sources",
+                "update": "http://127.0.0.1:8016/update_odb",
+                "clear": "http://127.0.0.1:8016/clear_cache",
+                "run": "http://127.0.0.1:8016/run_all",
+                "status": "http://127.0.0.1:8016/status"
+            }
         }
     }, indent=2).encode("utf-8"))
     print("Created file config.json. Please edit it with the correct token now, then run the bot again")
@@ -288,7 +290,7 @@ async def github_event():
     if not verify_signature(payload, quart.request.headers["X-Hub-Signature-256"].replace("sha256=", ""), config["github"]["secret"]):
         quart.abort(403)
 
-    channel = bot.get_channel(config["github"]["channel_id"])
+    channel = bot.get_channel(config["discord"]["github_channel_id"])
     if channel is None:
         return ""
 
@@ -315,7 +317,7 @@ async def github_event():
 async def odb_dbp_ci_status():
     payload = await quart.request.get_data()
     data = json.loads(payload.decode("utf-8"))
-    channel = bot.get_channel(config["odbci"]["channel_id"])
+    channel = bot.get_channel(config["discord"]["odbci_channel_id"])
     if channel is None:
         return ""
 
@@ -349,36 +351,23 @@ async def dbpc(ctx):
 async def odbci(ctx):
     help_str = """```
 odbci pull - Pull from sources repo
+odbci update - Update ODB compilers
+odbci clear - Discard any cached compile/run results 
 odbci run - Run all tests
-odbci status - Print summary of last test run```"""
+odbci status - Print summary of last run```"""
     args = ctx.message.content.split(" ")
     if len(args) == 1:
         return await ctx.send(help_str)
 
     async with aiohttp.ClientSession() as session:
-        if args[1] == "pull":
-            try:
-                async with session.get(url=config["odbci"]["endpoints"]["pull_sources"]) as resp:
-                    if resp.status != 200:
-                        return await ctx.send(f"update endpoint returned status {resp.status}")
-            except:
-                return await ctx.send("Failed to connect to endpoint")
-        elif args[1] == "run":
-            try:
-                async with session.get(url=config["odbci"]["endpoints"]["run_all"]) as resp:
-                    if resp.status != 200:
-                        return await ctx.send(f"update endpoint returned status {resp.status}")
-            except:
-                return await ctx.send("Failed to connect to endpoint")
-        elif args[1] == "status":
-            try:
-                async with session.get(url=config["odbci"]["endpoints"]["status"]) as resp:
-                    if resp.status != 200:
-                        return await ctx.send(f"update endpoint returned status {resp.status}")
-            except:
-                return await ctx.send("Failed to connect to endpoint")
-        else:
+        try:
+            async with session.get(url=config["odbci"]["endpoints"][args[1]]) as resp:
+                if resp.status != 200:
+                    return await ctx.send(f"Endpoint returned status {resp.status}")
+        except KeyError:
             return await ctx.send(help_str)
+        except:
+            return await ctx.send("Failed to connect to endpoint")
 
 
 loop = asyncio.get_event_loop()
@@ -392,4 +381,3 @@ except:
     loop.run_until_complete(bot.logout())
 finally:
     loop.close()
-
