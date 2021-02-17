@@ -364,7 +364,7 @@ async def odb_dbp_ci_status():
 async def dbpc(ctx):
     src = get_dbp_source(ctx.message.content)
     if src is None:
-        return await ctx.send("No source code found. Make sure to put it into \\`code here\\` or \\`\\`\\`code here\\`\\`\\`")
+        return await ctx.send("``` dbpc `code` ```")
 
     result = await compile_dbp_code("dbpc", "windows", src)
     await ctx.send(result)
@@ -374,7 +374,7 @@ async def dbpc(ctx):
 async def odbc(ctx):
     src = get_dbp_source(ctx.message.content)
     if src is None:
-        return await ctx.send("No source code found. Make sure to put it into \\`code here\\` or \\`\\`\\`code here\\`\\`\\`")
+        return await ctx.send("``` odbc [linux|windows] `code` ```")
 
     # Parse optional platform
     platform = "linux"
