@@ -24,8 +24,22 @@ if not os.path.exists("config.json"):
             "port": 8013
         },
         "dbpc": {
-            "endpoints": {
-                "compile": "http://127.0.0.1:/compile"
+            "windows": {
+                "endpoints": {
+                    "compile": "http://127.0.0.1:/compile"
+                }
+            }
+        },
+        "odbc": {
+            "windows": {
+                "endpoints": {
+                    "compile": "http://127.0.0.1:/compile"
+                },
+            },
+            "linux": {
+                "endpoints": {
+                    "compile": "http://127.0.0.1:/compile"
+                }
             }
         },
         "odbci": {
@@ -262,7 +276,7 @@ def create_signature(payload, secret):
     return payload_signature
 
 
-def get_dbpc_source(msg):
+def get_dbp_source(msg):
     start = msg.find("```") + 3
     end = msg.rfind("```")
     if start > -1 and end > -1:
@@ -282,6 +296,27 @@ def get_dbpc_source(msg):
         return msg[start:end]
 
     return None
+
+
+async def compile_dbp_code(compiler_name, platform, code):
+    try:
+        endpoint = config[compiler_name][platform]["endpoints"]["compile"]
+    except KeyError:
+        return f"Unknown compiler/platform: {compiler_name}/{platform}"
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = json.dumps({
+                "code": code
+            }).encode("utf-8")
+            async with session.post(url=endpoint, data=payload) as resp:
+                if resp.status != 200:
+                    return f"Endpoint {endpoint} returned {resp.status}"
+                resp = await resp.read()
+                resp = json.loads(resp.decode("utf-8"))
+                return f"{compiler_name}/{platform}:```\n{resp['output']}```"
+    except aiohttp.ClientError as e:
+        return f"Failed to connect to endpoint {endpoint}: {e}"
 
 
 @app.route("/github", methods=["POST"])
@@ -306,7 +341,7 @@ async def github_event():
         discord_msg = handler(json.loads(payload.decode("utf-8")))
     except Exception as e:
         traceback.print_exc()
-        discord_msg = f"```{e}```"
+        discord_msg = f"```{traceback.format_exc()}```"
 
     if discord_msg is not None:
         await channel.send(discord_msg)
@@ -327,24 +362,31 @@ async def odb_dbp_ci_status():
 
 @bot.command(name="dbpc")
 async def dbpc(ctx):
-    src = get_dbpc_source(ctx.message.content)
+    src = get_dbp_source(ctx.message.content)
     if src is None:
-        return await ctx.send("No source code found. Make sure to put it into \\`\\`\\`code here\\`\\`\\`")
+        return await ctx.send("No source code found. Make sure to put it into \\`code here\\` or \\`\\`\\`code here\\`\\`\\`")
 
-    print(config["dbpc"]["endpoints"]["compile"])
-    payload = json.dumps({
-        "code": src
-    }).encode("utf-8")
+    result = await compile_dbp_code("dbpc", "windows", src)
+    await ctx.send(result)
+
+
+@bot.command(name="odbc")
+async def odbc(ctx):
+    src = get_dbp_source(ctx.message.content)
+    if src is None:
+        return await ctx.send("No source code found. Make sure to put it into \\`code here\\` or \\`\\`\\`code here\\`\\`\\`")
+
+    # Parse optional platform
+    platform = "linux"
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url=config["dbpc"]["endpoints"]["compile"], data=payload) as resp:
-                if resp.status != 200:
-                    return await ctx.send(f"Endpoint returned {resp.status}")
-                resp = await resp.read()
-        resp = json.loads(resp.decode("utf-8"))
-        await ctx.send(f"```\n{resp['output']}```")
-    except:
-        await ctx.send(f"Failed to connect to endpoint")
+        maybe_platform = ctx.message.content.split(" ", 2)[1]
+        if maybe_platform in ("windows", "linux"):
+            platform = maybe_platform
+    except IndexError:
+        pass
+
+    result = await compile_dbp_code("odbc", platform, src)
+    await ctx.send(result)
 
 
 @bot.command(name="odbci")
@@ -359,15 +401,20 @@ odbci status - Print summary of last run```"""
     if len(args) == 1:
         return await ctx.send(help_str)
 
+    try:
+        endpoint = config["odbci"]["endpoints"][args[1]]
+    except KeyError:
+        return await ctx.send(help_str)
+
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(url=config["odbci"]["endpoints"][args[1]]) as resp:
+            async with session.get(url=endpoint) as resp:
                 if resp.status != 200:
                     return await ctx.send(f"Endpoint returned status {resp.status}")
-        except KeyError:
-            return await ctx.send(help_str)
-        except:
-            return await ctx.send("Failed to connect to endpoint")
+        except aiohttp.ClientError as e:
+            return await ctx.send(f"Failed to connect to endpoint {endpoint}: {e}")
+        except Exception as e:
+            return await ctx.send(f"Error occurred: {e}")
 
 
 loop = asyncio.get_event_loop()
